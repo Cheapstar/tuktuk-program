@@ -9,7 +9,7 @@ mod instructions;
 
 use instructions::*;
 
-declare_id!("9hG187VazKdEZcYbsEcoPuPEWwkfF9HccUDTAJzuEcg3");
+declare_id!("2HgqDnnTeK3UEJL8x1p6AKUbDycWq1qPPUqsL5BAScPu");
 
 #[ephemeral]
 #[program]
@@ -23,9 +23,17 @@ pub mod er_state_account {
         Ok(())
     }
 
-    pub fn update(ctx: Context<UpdateUser>, new_data: u64) -> Result<()> {
-        ctx.accounts.update(new_data)?;
+    // So Basically ye jo data store karna hai wo random hona chaiye using VRF , hai na ?
+    // Idea is ki hum pehle request bhejenge for the random data and the callback ko 
+    // define karna hai which will take care of saving the data
+    pub fn update(ctx: Context<UpdateUser>,client_seed:u8) -> Result<()> {
+        ctx.accounts.update(client_seed)?;
         
+        Ok(())
+    }
+
+    pub fn callback_update(ctx:Context<CallbackUpdate>,randomness: [u8; 32])->Result<()> {
+        ctx.accounts.callback_update(randomness);
         Ok(())
     }
 

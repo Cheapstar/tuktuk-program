@@ -12,10 +12,11 @@ describe("er-state-account", () => {
   const providerEphemeralRollup = new anchor.AnchorProvider(
     new anchor.web3.Connection(
       process.env.EPHEMERAL_PROVIDER_ENDPOINT ||
-        "https://devnet.magicblock.app/",
+        "https://devnet-as.magicblock.app/",
       {
         wsEndpoint:
-          process.env.EPHEMERAL_WS_ENDPOINT || "wss://devnet.magicblock.app/",
+          process.env.EPHEMERAL_WS_ENDPOINT ||
+          "wss://devnet-as.magicblock.app/",
       },
     ),
     anchor.Wallet.local(),
@@ -56,7 +57,7 @@ describe("er-state-account", () => {
 
   it("Update State!", async () => {
     const tx = await program.methods
-      .update(new anchor.BN(42))
+      .update(2)
       .accountsPartial({
         user: anchor.Wallet.local().publicKey,
         userAccount: userAccount,
@@ -140,7 +141,7 @@ describe("er-state-account", () => {
 
   it("Update State!", async () => {
     let tx = await program.methods
-      .update(new anchor.BN(45))
+      .update(2)
       .accountsPartial({
         user: anchor.Wallet.local().publicKey,
         userAccount: userAccount,
