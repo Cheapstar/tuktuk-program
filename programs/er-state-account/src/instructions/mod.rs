@@ -13,5 +13,8 @@ pub use delegate::*;
 pub mod undelegate;
 pub use undelegate::*;
 
+pub mod callback_update;
+pub use callback_update::*;
+
 pub mod close_user;
 pub use close_user::*;

@@ -33,7 +33,7 @@ pub mod er_state_account {
     }
 
     pub fn callback_update(ctx:Context<CallbackUpdate>,randomness: [u8; 32])->Result<()> {
-        ctx.accounts.callback_update(randomness);
+        ctx.accounts.callback_update(randomness)?;
         Ok(())
     }
 

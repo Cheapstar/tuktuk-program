@@ -4,6 +4,14 @@ import { LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 import { GetCommitmentSignature } from "@magicblock-labs/ephemeral-rollups-sdk";
 import { ErStateAccount } from "../target/types/er_state_account";
 
+const DEFAULT_QUEUE = new PublicKey(
+  "Cuj97ggrhhidhbu39TijNVqE74xvKJ69gDervRUXAxGh",
+);
+
+const DEFAULT_EPHEMERAL_QUEUE = new PublicKey(
+  "5hBR571xnXppuCPveTrctfTU7tJLSN94nq7kv7FRK5Tc",
+);
+
 describe("er-state-account", () => {
   // Configure the client to use the local cluster.
   const provider = anchor.AnchorProvider.env();
@@ -43,7 +51,6 @@ describe("er-state-account", () => {
   )[0];
 
   it("Is initialized!", async () => {
-    // Add your test here.
     const tx = await program.methods
       .initialize()
       .accountsPartial({
@@ -55,18 +62,28 @@ describe("er-state-account", () => {
     console.log("User Account initialized: ", tx);
   });
 
-  it("Update State!", async () => {
+  it("[Task 1] : Update State Outside the ER ", async () => {
+    // this happens directly to on-chain
+    // we give the 2 as the seeds for randomness
     const tx = await program.methods
-      .update(2)
+      .update(10)
       .accountsPartial({
         user: anchor.Wallet.local().publicKey,
         userAccount: userAccount,
+        oracleQueue: DEFAULT_QUEUE,
       })
-      .rpc();
+      .rpc({ skipPreflight: true });
     console.log("\nUser Account State Updated: ", tx);
+
+    await new Promise((resolve) => setTimeout(resolve, 5_000));
+
+    const account = await program.account.userAccount.fetch(userAccount);
+    const user_account_data = account.data.toString();
+    console.log("Updated State Using Randomness ,", user_account_data);
   });
 
   it("Delegate to Ephemeral Rollup!", async () => {
+    // This delegates the user account to the ER
     let tx = await program.methods
       .delegate()
       .accountsPartial({
@@ -80,8 +97,56 @@ describe("er-state-account", () => {
     console.log("\nUser Account Delegated to Ephemeral Rollup: ", tx);
   });
 
+  it("[Task 2] : Update State Inside The ER", async () => {
+    // This is taken by ER cause userAccount is included and then commited to base layer
+    const ephemeral_program = new anchor.Program(
+      program.idl,
+      providerEphemeralRollup,
+    );
+
+    let tx = await ephemeral_program.methods
+      .update(2)
+      .accountsPartial({
+        user: providerEphemeralRollup.wallet.publicKey,
+        userAccount: userAccount,
+        oracleQueue: DEFAULT_EPHEMERAL_QUEUE,
+      })
+      .transaction();
+
+    tx.feePayer = providerEphemeralRollup.wallet.publicKey;
+
+    tx.recentBlockhash = (
+      await providerEphemeralRollup.connection.getLatestBlockhash()
+    ).blockhash;
+    tx = await providerEphemeralRollup.wallet.signTransaction(tx);
+    const txHash = await providerEphemeralRollup.sendAndConfirm(tx, [], {
+      skipPreflight: false,
+    });
+
+    console.log("\nUser Account State Updated: ", txHash);
+
+    // await new Promise((resolve) => setTimeout(resolve, 5_000));
+
+    const accountInfo = await providerEphemeralRollup.connection.getAccountInfo(
+      userAccount,
+    );
+
+    // Why is this always coming as 0 ??
+    // Okay so we were checking it on the main chain before , so now we are checking it on ER
+    if (accountInfo) {
+      const randomValue = new anchor.BN(accountInfo.data.slice(40, 48), "le");
+      console.log("  Random value :", randomValue.toString());
+    }
+  });
+
   it("Update State and Commit to Base Layer!", async () => {
-    let tx = await program.methods
+    // This is taken by ER cause userAccount is included and then commited to base layer
+    const ephemeral_program = new anchor.Program(
+      program.idl,
+      providerEphemeralRollup,
+    );
+
+    let tx = await ephemeral_program.methods
       .updateCommit(new anchor.BN(43))
       .accountsPartial({
         user: providerEphemeralRollup.wallet.publicKey,
@@ -104,9 +169,23 @@ describe("er-state-account", () => {
     );
 
     console.log("\nUser Account State Updated: ", txHash);
+
+    // await new Promise((resolve) => setTimeout(resolve, 5_000));
+
+    const accountInfo = await providerEphemeralRollup.connection.getAccountInfo(
+      userAccount,
+    );
+
+    // Why is this always coming as 0 ??
+    // Okay so we were checking it on the main chain before , so now we are checking it on ER
+    if (accountInfo) {
+      const randomValue = new anchor.BN(accountInfo.data.slice(40, 48), "le");
+      console.log("  Random value :", randomValue.toString());
+    }
   });
 
   it("Commit and undelegate from Ephemeral Rollup!", async () => {
+    // this goes to ER and then onchain is updated
     let info = await providerEphemeralRollup.connection.getAccountInfo(
       userAccount,
     );
@@ -137,14 +216,19 @@ describe("er-state-account", () => {
     );
 
     console.log("\nUser Account Undelegated: ", txHash);
+
+    const account = await program.account.userAccount.fetch(userAccount);
+    console.log("Random value :", account.data.toString());
   });
 
   it("Update State!", async () => {
+    // This happens on-chain
     let tx = await program.methods
       .update(2)
       .accountsPartial({
         user: anchor.Wallet.local().publicKey,
         userAccount: userAccount,
+        oracleQueue: DEFAULT_QUEUE,
       })
       .rpc();
 
@@ -152,6 +236,7 @@ describe("er-state-account", () => {
   });
 
   it("Close Account!", async () => {
+    // this happens on chain
     const tx = await program.methods
       .close()
       .accountsPartial({
