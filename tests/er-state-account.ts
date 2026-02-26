@@ -138,4 +138,162 @@ describe("Tuk Tuk Program", async () => {
       console.log("\nUser Account Closed: ", close_tx);
     }
   });
+  it("Checking the working of Program , init , update onchain , delegating", async () => {
+    // initializing the program
+    // creates a state
+    const init_tx = await program.methods
+      .initialize()
+      .accountsPartial({
+        user: anchor.Wallet.local().publicKey,
+        userAccount: userAccount,
+        systemProgram: anchor.web3.SystemProgram.programId,
+      })
+      .rpc();
+    console.log("User Account initialized: ", init_tx);
+
+    // this happens directly to on-chain
+    // we give the 2 as the seeds for randomness
+    const update_tx = await program.methods
+      .updateUser(new anchor.BN(10))
+      .accountsPartial({
+        user: anchor.Wallet.local().publicKey,
+        userAccount: userAccount,
+      })
+      .rpc({ skipPreflight: true });
+    console.log(
+      "\n [ONCHAIN] User Account State Updated Manually: ",
+      update_tx,
+    );
+
+    const account = await program.account.userAccount.fetch(userAccount);
+    const user_account_data = account.data.toString();
+    console.log("Updated State : ,", user_account_data);
+
+    // this is for randomized update so for this we use default oracle queue
+    const randomize_update_tx = await program.methods
+      .requestRandomness(2)
+      .accountsPartial({
+        user: anchor.Wallet.local().publicKey,
+        userAccount: userAccount,
+        oracleQueue: DEFAULT_QUEUE,
+      })
+      .rpc({ skipPreflight: true });
+    console.log(
+      "\n [ONCHAIN] User Account State Updated Randomized : ",
+      randomize_update_tx,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 5_000));
+
+    console.log(
+      "Updated State : ,",
+      (await program.account.userAccount.fetch(userAccount)).data.toString(),
+    );
+
+    console.log("[Delegating] the State to ER ");
+    // This delegates the user account to the ER
+    let delegate_tx = await program.methods
+      .delegate()
+      .accountsPartial({
+        user: anchor.Wallet.local().publicKey,
+        userAccount: userAccount,
+        validator: new PublicKey("MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57"),
+        systemProgram: anchor.web3.SystemProgram.programId,
+      })
+      .rpc({ skipPreflight: true });
+
+    console.log("\nUser Account Delegated to Ephemeral Rollup: ", delegate_tx);
+
+    // This is taken by ER cause userAccount is included and then commited to base layer
+    const ephemeral_program = new anchor.Program(
+      program.idl,
+      providerEphemeralRollup,
+    );
+
+    let update_on_er_tx = await program.methods
+      .updateUser(new anchor.BN(2))
+      .accountsPartial({
+        user: anchor.Wallet.local().publicKey,
+        userAccount: userAccount,
+      })
+      .transaction();
+
+    update_on_er_tx.feePayer = providerEphemeralRollup.wallet.publicKey;
+
+    update_on_er_tx.recentBlockhash = (
+      await providerEphemeralRollup.connection.getLatestBlockhash()
+    ).blockhash;
+    update_on_er_tx = await providerEphemeralRollup.wallet.signTransaction(
+      update_on_er_tx,
+    );
+    const update_on_er_tx_hash = await providerEphemeralRollup.sendAndConfirm(
+      update_on_er_tx,
+      [],
+      {
+        skipPreflight: false,
+      },
+    );
+
+    console.log("\nUser Account State Updated: ", update_on_er_tx_hash);
+
+    await new Promise((resolve) => setTimeout(resolve, 5_000));
+
+    const userAccountInfo =
+      await providerEphemeralRollup.connection.getAccountInfo(userAccount);
+
+    // Why is this always coming as 0 ??
+    // Okay so we were checking it on the main chain before , so now we are checking it on ER
+    if (userAccountInfo) {
+      const randomValue = new anchor.BN(
+        userAccountInfo.data.slice(40, 48),
+        "le",
+      );
+      console.log("  Random value :", randomValue.toString());
+    }
+  });
+  // ---
+  it("Schedule the Commit 100s from now", async () => {
+    let tuktukProgram = await init(provider);
+
+    // This is taken by ER cause userAccount is included and then commited to base layer
+    const ephemeral_program = new anchor.Program(
+      program.idl,
+      providerEphemeralRollup,
+    );
+
+    let task_id = 4;
+    let tx = await program.methods
+      .schedule(task_id)
+      .accountsPartial({
+        user: provider.publicKey,
+        userAccount: userAccount,
+        taskQueue: taskQueue,
+        taskQueueAuthority: taskQueueAuthority,
+        task: taskKey(taskQueue, task_id)[0],
+        queueAuthority: queueAuthority,
+        magicContext: MAGIC_CONTEXT_ID,
+        magicProgram: MAGIC_PROGRAM_ID,
+        systemProgram: SYSTEM_PROGRAM_ID,
+        tuktukProgram: tuktukProgram.programId,
+      })
+      .transaction();
+
+    tx.feePayer = providerEphemeralRollup.wallet.publicKey;
+
+    tx.recentBlockhash = (
+      await providerEphemeralRollup.connection.getLatestBlockhash()
+    ).blockhash;
+    tx = await providerEphemeralRollup.wallet.signTransaction(tx);
+    const txHash = await providerEphemeralRollup.sendAndConfirm(tx, [], {
+      skipPreflight: false,
+    });
+
+    assert(
+      tuktukProgram.programId.equals(
+        new anchor.web3.PublicKey(
+          "tuktukUrfhXT6ZT77QTU8RQtvgL967uRuVagWF57zVA",
+        ),
+      ),
+    );
+    console.log("\nUser Account State Updated: ", txHash);
+  });
 });
