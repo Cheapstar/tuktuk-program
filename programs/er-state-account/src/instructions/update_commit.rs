@@ -18,10 +18,7 @@ pub struct UpdateCommit<'info> {
 
 impl<'info> UpdateCommit<'info> {
     
-    pub fn update_commit(&mut self, new_data: u64) -> Result<()> {
-
-        // Update the data field
-        self.user_account.data = new_data;
+    pub fn update_commit(&mut self) -> Result<()> {
 
         commit_accounts(
             &self.user.to_account_info(), 

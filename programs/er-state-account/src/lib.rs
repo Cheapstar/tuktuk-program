@@ -9,7 +9,7 @@ mod instructions;
 
 use instructions::*;
 
-declare_id!("2HgqDnnTeK3UEJL8x1p6AKUbDycWq1qPPUqsL5BAScPu");
+declare_id!("5KCEjLFXjrp7b8xTDqEeU4k44YbQmmBzuKs84R35GGzG");
 
 #[ephemeral]
 #[program]
@@ -23,11 +23,16 @@ pub mod er_state_account {
         Ok(())
     }
 
+    pub fn update_user(ctx:Context<UpdateUser>,new_data:u64)->Result<()>{
+        ctx.accounts.update(new_data)?;
+        Ok(())
+    }
+
     // So Basically ye jo data store karna hai wo random hona chaiye using VRF , hai na ?
     // Idea is ki hum pehle request bhejenge for the random data and the callback ko 
     // define karna hai which will take care of saving the data
-    pub fn update(ctx: Context<UpdateUser>,client_seed:u8) -> Result<()> {
-        ctx.accounts.update(client_seed)?;
+    pub fn request_randomness(ctx: Context<RequestRandomness>,client_seed:u8) -> Result<()> {
+        ctx.accounts.request_randomness(client_seed)?;
         
         Ok(())
     }
@@ -37,8 +42,8 @@ pub mod er_state_account {
         Ok(())
     }
 
-    pub fn update_commit(ctx: Context<UpdateCommit>, new_data: u64) -> Result<()> {
-        ctx.accounts.update_commit(new_data)?;
+    pub fn update_commit(ctx: Context<UpdateCommit>) -> Result<()> {
+        ctx.accounts.update_commit()?;
         
         Ok(())
     }
@@ -58,6 +63,11 @@ pub mod er_state_account {
     pub fn close(ctx: Context<CloseUser>) -> Result<()> {
         ctx.accounts.close()?;
         
+        Ok(())
+    }
+
+    pub fn schedule(ctx:Context<Schedule>,task_id:u16)->Result<()> {
+        ctx.accounts.schedule(task_id, ctx.bumps)?;
         Ok(())
     }
 }
