@@ -8,6 +8,7 @@ use crate::{instruction, instructions, state::UserAccount};
 #[vrf]
 #[derive(Accounts)]
 pub struct RequestRandomness<'info> {
+       #[account(mut)]
     pub user: Signer<'info>,
     #[account(
         mut,

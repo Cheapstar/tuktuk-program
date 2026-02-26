@@ -10,7 +10,8 @@
     "@magicblock-labs/ephemeral-rollups-sdk": "^0.8.5",
     "@helium/cron-sdk": "^0.0.10",
     "@helium/spl-utils": "^0.11.7",
-    "@helium/tuktuk-sdk": "^0.0.10"
+    "@helium/tuktuk-sdk": "^0.0.10",
+    "axios": "^1.13.5"
   },
   "devDependencies": {
     "@types/bn.js": "^5.1.0",

@@ -85,6 +85,9 @@ describe("Tuk Tuk Program", async () => {
     // Check does user_account_exists if yes then undelegate it and delete it
     const user_account = await provider.connection.getAccountInfo(userAccount);
 
+    const randomValue = new anchor.BN(user_account.data.slice(40, 48), "le");
+    console.log("  Random value :", randomValue.toString());
+
     if (user_account) {
       // this goes to ER and then onchain is updated
       let info = await providerEphemeralRollup.connection.getAccountInfo(
@@ -182,13 +185,64 @@ describe("Tuk Tuk Program", async () => {
       "\n [ONCHAIN] User Account State Updated Randomized : ",
       randomize_update_tx,
     );
-    await new Promise((resolve) => setTimeout(resolve, 5_000));
+    await new Promise((resolve) => setTimeout(resolve, 5000));
 
     console.log(
       "Updated State : ,",
       (await program.account.userAccount.fetch(userAccount)).data.toString(),
     );
+  });
+  // ---
+  it("Schedule the Commit 100s from now", async () => {
+    try {
+      let tuktukProgram = await init(provider);
 
+      let task_id = 4;
+      let tx = await program.methods
+        .schedule(task_id)
+        .accountsPartial({
+          user: anchor.Wallet.local().publicKey,
+          userAccount: userAccount,
+          taskQueue: taskQueue,
+          taskQueueAuthority: taskQueueAuthority,
+          task: taskKey(taskQueue, task_id)[0],
+          queueAuthority: queueAuthority,
+          magicContext: MAGIC_CONTEXT_ID,
+          magicProgram: MAGIC_PROGRAM_ID,
+          systemProgram: SYSTEM_PROGRAM_ID,
+          tuktukProgram: tuktukProgram.programId,
+        })
+        .signers([anchor.Wallet.local().payer])
+        .transaction();
+
+      tx.feePayer = anchor.Wallet.local().publicKey; // <-- ADD THIS
+      tx.recentBlockhash = (
+        await provider.connection.getLatestBlockhash()
+      ).blockhash;
+      tx = await provider.wallet.signTransaction(tx);
+      const txHash = await provider.sendAndConfirm(tx, [], {
+        skipPreflight: false,
+      });
+
+      assert(
+        tuktukProgram.programId.equals(
+          new anchor.web3.PublicKey(
+            "tuktukUrfhXT6ZT77QTU8RQtvgL967uRuVagWF57zVA",
+          ),
+        ),
+      );
+      console.log("\nUser Account State Updated: ", txHash);
+    } catch (error) {
+      console.log("\nFull error:", error);
+      if (error.logs) {
+        console.log("\nTransaction logs:");
+        error.logs.forEach((log) => console.log(log));
+      }
+      throw error;
+    }
+  });
+
+  it("Delegating the Program ", async () => {
     console.log("[Delegating] the State to ER ");
     // This delegates the user account to the ER
     let delegate_tx = await program.methods
@@ -202,18 +256,23 @@ describe("Tuk Tuk Program", async () => {
       .rpc({ skipPreflight: true });
 
     console.log("\nUser Account Delegated to Ephemeral Rollup: ", delegate_tx);
+  });
 
+  let expected_value = "";
+
+  it("Updating the User Account", async () => {
     // This is taken by ER cause userAccount is included and then commited to base layer
     const ephemeral_program = new anchor.Program(
       program.idl,
       providerEphemeralRollup,
     );
 
-    let update_on_er_tx = await program.methods
-      .updateUser(new anchor.BN(2))
+    let update_on_er_tx = await ephemeral_program.methods
+      .requestRandomness(2)
       .accountsPartial({
         user: anchor.Wallet.local().publicKey,
         userAccount: userAccount,
+        oracleQueue: DEFAULT_QUEUE,
       })
       .transaction();
 
@@ -235,65 +294,45 @@ describe("Tuk Tuk Program", async () => {
 
     console.log("\nUser Account State Updated: ", update_on_er_tx_hash);
 
-    await new Promise((resolve) => setTimeout(resolve, 5_000));
-
-    const userAccountInfo =
-      await providerEphemeralRollup.connection.getAccountInfo(userAccount);
-
-    // Why is this always coming as 0 ??
-    // Okay so we were checking it on the main chain before , so now we are checking it on ER
-    if (userAccountInfo) {
-      const randomValue = new anchor.BN(
-        userAccountInfo.data.slice(40, 48),
-        "le",
-      );
-      console.log("  Random value :", randomValue.toString());
+    // poll until randomness is non-zero (oracle fulfilled it)
+    let randomValue = new anchor.BN(0);
+    for (let i = 0; i < 20; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      const userAccountInfo =
+        await providerEphemeralRollup.connection.getAccountInfo(userAccount);
+      if (userAccountInfo) {
+        randomValue = new anchor.BN(userAccountInfo.data.slice(40, 48), "le");
+        console.log(
+          `  [Poll ${i + 1}] Random value: ${randomValue.toString()}`,
+        );
+        if (randomValue.toNumber() !== 0) break;
+      }
     }
-  });
-  // ---
-  it("Schedule the Commit 100s from now", async () => {
-    let tuktukProgram = await init(provider);
-
-    // This is taken by ER cause userAccount is included and then commited to base layer
-    const ephemeral_program = new anchor.Program(
-      program.idl,
-      providerEphemeralRollup,
-    );
-
-    let task_id = 4;
-    let tx = await program.methods
-      .schedule(task_id)
-      .accountsPartial({
-        user: provider.publicKey,
-        userAccount: userAccount,
-        taskQueue: taskQueue,
-        taskQueueAuthority: taskQueueAuthority,
-        task: taskKey(taskQueue, task_id)[0],
-        queueAuthority: queueAuthority,
-        magicContext: MAGIC_CONTEXT_ID,
-        magicProgram: MAGIC_PROGRAM_ID,
-        systemProgram: SYSTEM_PROGRAM_ID,
-        tuktukProgram: tuktukProgram.programId,
-      })
-      .transaction();
-
-    tx.feePayer = providerEphemeralRollup.wallet.publicKey;
-
-    tx.recentBlockhash = (
-      await providerEphemeralRollup.connection.getLatestBlockhash()
-    ).blockhash;
-    tx = await providerEphemeralRollup.wallet.signTransaction(tx);
-    const txHash = await providerEphemeralRollup.sendAndConfirm(tx, [], {
-      skipPreflight: false,
-    });
 
     assert(
-      tuktukProgram.programId.equals(
-        new anchor.web3.PublicKey(
-          "tuktukUrfhXT6ZT77QTU8RQtvgL967uRuVagWF57zVA",
-        ),
-      ),
+      randomValue.toNumber() !== 0,
+      "Oracle never fulfilled randomness on ER",
     );
-    console.log("\nUser Account State Updated: ", txHash);
+    expected_value = randomValue.toString();
+    console.log("  Captured expected value:", expected_value);
+  });
+
+  it("delaying 100s and checking it at the ONCHAIN ", async () => {
+    await delay(200000);
+
+    const userAccountInfo = await provider.connection.getAccountInfo(
+      userAccount,
+    );
+
+    const randomValue = new anchor.BN(userAccountInfo.data.slice(40, 48), "le");
+    console.log("  Random value :", randomValue.toString());
+    assert(
+      expected_value === randomValue.toString(),
+      "Value Should have been updated",
+    );
   });
 });
+
+const delay = (ms: number): Promise<void> => {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+};

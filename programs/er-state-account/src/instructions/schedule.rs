@@ -13,8 +13,7 @@ use crate::state::UserAccount;
 #[derive(Accounts)]
 pub struct Schedule<'info> {
     #[account(
-        mut,
-    )]
+        mut    )]
     pub user:Signer<'info>,
 
     #[account(
@@ -42,7 +41,8 @@ pub struct Schedule<'info> {
     #[account(mut, address = ephemeral_rollups_sdk::consts::MAGIC_CONTEXT_ID)]
     /// CHECK:`
     pub magic_context: AccountInfo<'info>,
-    pub magic_program: Program<'info, ephemeral_rollups_sdk::anchor::MagicProgram>,
+    /// CHECK:`
+    pub magic_program: AccountInfo<'info>,
 
     pub system_program:Program<'info,System>,
     pub tuktuk_program:Program<'info,Tuktuk>
@@ -58,8 +58,8 @@ impl<'info> Schedule<'info> {
                 Instruction {
                     program_id: crate::ID,
                     accounts: crate::__cpi_client_accounts_update_commit:: UpdateCommit {
-                        user_account:self.user_account.to_account_info(),
                         user:self.user.to_account_info(),
+                        user_account:self.user_account.to_account_info(),
                         magic_context: self.magic_context.to_account_info(),
                         magic_program:self.magic_program.to_account_info()
                     }.to_account_metas(Some(true))
@@ -84,7 +84,7 @@ impl<'info> Schedule<'info> {
             ), 
             QueueTaskArgsV0 {
                 id: task_id,
-                trigger: TriggerV0::Timestamp(curr_time.checked_add(100).unwrap()),
+                trigger: TriggerV0::Timestamp(curr_time + 100),
                 transaction: TransactionSourceV0::CompiledV0(compile_tx),
                 crank_reward: Some(1000001),
                 free_tasks: 1,
@@ -92,6 +92,7 @@ impl<'info> Schedule<'info> {
             }
         )?;
 
+        msg!("Update Commit Scheduled Successfully");
 
         Ok(())
     }
